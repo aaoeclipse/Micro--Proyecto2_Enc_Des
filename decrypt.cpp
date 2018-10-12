@@ -117,9 +117,9 @@ uint32_t xORfuncion(uint32_t block, uint32_t key)
 
 uint64_t decrypt(uint32_t left, uint32_t right, uint32_t rounds, uint32_t keys[])
 {
-        uint32_t i, tempLeft, tempRight;
+        uint32_t tempLeft, tempRight;
 
-        for (i = 0; i < rounds; i++)
+        for (int i = 0; i < rounds; i++)
         {       
                 // segun al algoritmo tL = (izquierda XOR llave) XOR derecha
                 tempLeft = xORfuncion(left, keys[rounds - i - 1]) ^ right;

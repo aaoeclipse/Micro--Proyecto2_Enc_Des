@@ -8,9 +8,8 @@
 #include <fstream>
 #include <codecvt>
 
-
 #define ROUNDS 16
-#define BLOCK_SIZE 8
+#define CAPACIDAD_BLOQUE 8
 
 using namespace std;
 uint32_t f(uint32_t block, uint32_t key);
@@ -33,17 +32,20 @@ uint32_t keys[ROUNDS] = {
     0x349968F5,
     0x62FD58D0,
     0x339DFC3C,
-    0x4815AD1E};
+    0x4815AD1E,
+    0x7312DEAD};
 int main(int argc, char *argv[])
 {
-	timespec t1, t2, diff_t;
+        timespec t1, t2, diff_t;
         FILE *cryptFile, *decryptedFile;
+        // Checks if arguments are correct
         if (argc != 2)
         {
                 fprintf(stderr, "[-] Incorrect format!\n");
                 fprintf(stderr, "$ ./[runfile] [cryptFile]\n");
                 return EXIT_FAILURE;
         }
+        // Tries to open file
         cryptFile = fopen(argv[1], "r");
         if (!cryptFile)
         {
@@ -51,96 +53,108 @@ int main(int argc, char *argv[])
                 cout << argv[1] << endl;
                 return EXIT_FAILURE;
         }
+        
         cout << "[+] " << argv[1] << " found!" << endl;
-        decryptedFile = fopen("decryptedFile", "w");
+        decryptedFile = fopen("decryptedFile.txt", "w");
         // Time
-	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t1);
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t1);
         decrypt_cbc(cryptFile, decryptedFile, ROUNDS, keys);
-	clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t2);
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t2);
 
         fclose(cryptFile);
         fclose(decryptedFile);
 
         diff(t1, t2, diff_t);
 
-	int sec = diff_t.tv_sec;
-	int ns  = diff_t.tv_nsec;
+        int sec = diff_t.tv_sec;
+        int ns = diff_t.tv_nsec;
 
-	printf("[*] EXEC TIME\t%d.%d\n", sec, ns);
+        printf("[*] EXEC TIME\t%d.%d\n", sec, ns);
         cout << "[+] decryptedFile created!" << endl;
 
         return 0;
 }
 
 void decrypt_cbc(FILE *infile, FILE *decryptedFile, uint32_t rounds, uint32_t keys[])
-{
-        int first = 1;
+{       
+        int primer = 1;
         uint32_t left, right;
-        size_t ret;
-        uint64_t sblock, sblock_prev, saved;
+        size_t resultado;
+        uint64_t blque, blque_prev, saved;
         cout << "[*] Decrypting ";
-        while (!feof(infile))
+        while (!feof(infile))   // Mientas no lleguemos al end of file
         {
                 cout << ". ";
-                memset(&sblock, 0, BLOCK_SIZE);
-                ret = fread(&sblock, 1, BLOCK_SIZE, infile);
-                if (!ret)
-                        break;
-                saved = sblock;
-                left = (sblock >> 32) & 0xFFFFFFFF;
-                right = sblock & 0xFFFFFFFF;
-                sblock = decrypt(left, right, ROUNDS, keys);
-                if (first)
+                resultado = fread(&blque, 1, CAPACIDAD_BLOQUE, infile);
+                saved = blque;
+                // Corremos 32 bits segun el algoritmo
+                // tambien se hace un AND con un bloque predefinido 
+                left = (blque >> 32) & 0xFFFFFFFF;
+                // Se hace tambien el AND
+                right = blque & 0xFFFFFFFF;
+                // Utilizamos la desencrypcion 
+                blque = decrypt(left, right, ROUNDS, keys);
+                // Si es el primero nos puede dar un par de erroeres ya que no hay bloque pasado
+                if (primer)
                 {
-                        sblock ^= 0xF0CCFACE;
-                        first = 0;
+                        blque ^= 0xF0CCFACE;
+                        primer = 0;
                 }
                 else
                 {
-                        sblock ^= sblock_prev;
+                        blque ^= blque_prev;
                 }
                 /* CBC */
-                sblock_prev = saved;
-                fwrite(&sblock, 1, BLOCK_SIZE, decryptedFile);
+                blque_prev = saved;
+                // Escribimos el bloque de regreso en el archivo desencryptado
+                fwrite(&blque, 1, CAPACIDAD_BLOQUE, decryptedFile);
         }
         cout << endl;
 }
-uint32_t f(uint32_t block, uint32_t key)
+uint32_t xORfuncion(uint32_t block, uint32_t key)
 {
         return block ^ key;
 }
 
 uint64_t decrypt(uint32_t left, uint32_t right, uint32_t rounds, uint32_t keys[])
 {
-        uint32_t i, left1, right1;
+        uint32_t i, tempLeft, tempRight;
 
         for (i = 0; i < rounds; i++)
-        {
-                left1 = f(left, keys[rounds - i - 1]) ^ right;
-                right1 = left;
-                if (i == (rounds - 1))
+        {       
+                // segun al algoritmo tL = (izquierda XOR llave) XOR derecha
+                tempLeft = xORfuncion(left, keys[rounds - i - 1]) ^ right;
+                // derecha = izquierda
+                tempRight = left;
+                if (i == (rounds - 1)) // es el ultimo?
                 {
-                        left = right1;
-                        right = left1;
+                        // Ya que es el ultimi, hacemos el criss-cross (cambiamos izquierda por derecha y vise versa)
+                        left = tempRight;
+                        right = tempLeft;
                 }
-                else
+                else // no es el ultimo
                 {
-                        left = left1;
-                        right = right1;
+                        left = tempLeft;
+                        right = tempRight;
                 }
         }
+        // Por ultimo hacemos el corrimiento a la izquierda de 32 bits y hacemos un OR con el derecho
         return (uint64_t)left << 32 | right;
 }
 
 ///medir tiempo.
-int diff(timespec start, timespec end, timespec &diff){
+int diff(timespec start, timespec end, timespec &diff)
+{
 
-	if ((end.tv_nsec-start.tv_nsec)<0) {
-		diff.tv_sec = end.tv_sec-start.tv_sec-1;
-		diff.tv_nsec = 1000000000+end.tv_nsec-start.tv_nsec;
-	} else {
-		diff.tv_sec = end.tv_sec-start.tv_sec;
-		diff.tv_nsec = end.tv_nsec-start.tv_nsec;
-	}
-	return 0;
+        if ((end.tv_nsec - start.tv_nsec) < 0)
+        {
+                diff.tv_sec = end.tv_sec - start.tv_sec - 1;
+                diff.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
+        }
+        else
+        {
+                diff.tv_sec = end.tv_sec - start.tv_sec;
+                diff.tv_nsec = end.tv_nsec - start.tv_nsec;
+        }
+        return 0;
 }

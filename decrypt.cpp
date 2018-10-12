@@ -87,12 +87,11 @@ void decrypt_cbc(FILE *infile, FILE *decryptedFile, uint32_t rounds, uint32_t ke
                 cout << ". ";
                 resultado = fread(&blque, 1, CAPACIDAD_BLOQUE, infile);
                 saved = blque;
-                // Corremos 32 bits segun el algoritmo
-                // tambien se hace un AND con un bloque predefinido 
+                // Corremos 32 bits y hacemus un AND segun el algoritmo para conseguir el lado izquierdo 
                 left = (blque >> 32) & 0xFFFFFFFF;
-                // Se hace tambien el AND
+                // Se hace tambien el AND en el derecho con para conseguir el lado derecho
                 right = blque & 0xFFFFFFFF;
-                // Utilizamos la desencrypcion 
+                // Utilizamos la desencrypcion y utilizamos el left y right que sacamos anteriormente
                 blque = decrypt(left, right, ROUNDS, keys);
                 // Si es el primero nos puede dar un par de erroeres ya que no hay bloque pasado
                 if (primer)
